@@ -1,0 +1,15 @@
+[
+  {
+    "directory": "/home/user/Documents/Semester-8/CALD/16x16_fpga_systolic_array",
+    "arguments": [
+      "/home/user/Xilinx/2025.2/Vitis/lnx64/tools/vcxx/libexec/clang++",
+      "--gcc-toolchain=/home/user/Xilinx/2025.2/Vitis/tps/lnx64/gcc-8.3.0",
+      "-fhls",
+      "-hls-syn-headers-dir=/home/user/Xilinx/2025.2/Vitis/common/technology/autopilot",
+      "-fhlstoplevel=systolic_mm",
+      "-c",
+      "/home/user/Documents/Semester-8/CALD/16x16_fpga_systolic_array/src/fpga_systolic_array.cpp"
+    ],
+    "file": "/home/user/Documents/Semester-8/CALD/16x16_fpga_systolic_array/src/fpga_systolic_array.cpp"
+  }
+]
