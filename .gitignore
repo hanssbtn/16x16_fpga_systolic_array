@@ -1,16 +1,19 @@
 # Ignore build output directory
-/build
+/build*
 /export
 
 # Ignore object files and dependent files
 .o
 .d
 
-#Ignore logs folder and log files
+# Ignore logs folder and log files
 /logs
 .log
 
-#Ignore lock files
+# Ignore backup files
+*.bak
+
+# Ignore lock files
 .lock
 
 .bin
