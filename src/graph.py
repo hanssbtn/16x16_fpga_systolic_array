@@ -162,7 +162,7 @@ def plot_per_size_graphs(size, current_unrolls):
     ax2.plot([x_min, x_max], [MAX_DSP, MAX_DSP], color='red', linestyle='--', alpha=0.7, label=f'Spartan-7 Max DSP Limit ({MAX_DSP})')
 
     # Annotate EVERY point
-    for idx, row in df_1d.iterrows():
+    for _, row in df_1d.iterrows():
         ax2.annotate(f"{int(row['DSP'])}", (row['Unroll_Factor'], row['DSP']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9, color='#ffe66d')
         ax2.annotate(f"{int(row['BRAM'])}", (row['Unroll_Factor'], row['BRAM']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#6b5b95')
 
@@ -194,7 +194,7 @@ def plot_per_size_graphs(size, current_unrolls):
     ax3.plot([x_min, x_max], [MAX_FF, MAX_FF], color='#54a0ff', linestyle='--', alpha=0.5, label=f'Spartan-7 Max FF ({MAX_FF})')
 
     # Annotate EVERY point
-    for idx, row in df_1d.iterrows():
+    for _, row in df_1d.iterrows():
         ax3.annotate(f"{int(row['LUT'])}", (row['Unroll_Factor'], row['LUT']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9, color='#ff9ff3')
         ax3.annotate(f"{int(row['FF'])}", (row['Unroll_Factor'], row['FF']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#54a0ff')
     
@@ -215,9 +215,11 @@ def plot_per_size_graphs(size, current_unrolls):
     plt.close(fig3)
 
 def plot_global_resource_scalability():
-    """Plots how resources (DSP, BRAM, LUT) scale as Matrix Size (N) increases."""
+    """Plots how resources (DSP, BRAM, LUT) scale as Matrix Size (N) and Unroll Factor increases."""
     df = pd.read_csv(results_csv)
-    df_1d = df[(df['Architecture'] == '1D') & (df['Unroll_Factor'] == '16')]
+    df['Unroll_Factor_Num'] = pd.to_numeric(df['Unroll_Factor'], errors='coerce')
+    
+    df_1d = df[(df['Architecture'] == '1D') & (df['Unroll_Factor_Num'] == df['Matrix_Size'])]
     df_2d = df[df['Architecture'] == '2D']
     
     if df_1d.empty and df_2d.empty:
@@ -230,8 +232,12 @@ def plot_global_resource_scalability():
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
 
     # --- SUBPLOT 1: MACRO RESOURCES ---
-    ax1.plot(df_1d['Matrix_Size'], df_1d['DSP'], marker='o', color='#ffe66d', linewidth=2, label='1D DSP (Unroll 16)')
-    ax1.plot(df_1d['Matrix_Size'], df_1d['BRAM'], marker='^', color='#6b5b95', linewidth=2, linestyle='--', label='1D BRAM')
+    ax1.plot(df_1d['Matrix_Size'], df_1d['DSP'], marker='o', color='#ffe66d', linewidth=2, label='1D DSP (Unroll Factor = N)')
+    ax1.plot(df_1d['Matrix_Size'], df_1d['BRAM'], marker='^', color='#6b5b95', linewidth=2, linestyle='--', label='1D BRAM (Unroll Factor = N)')
+    
+    for _, row in df_1d.iterrows():
+        ax1.annotate(f"{row['DSP']:.2f}", (row['Matrix_Size'], row['DSP']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=8, color='#4ecdc4')
+        ax1.annotate(f"{row['BRAM']:.2f}", (row['Matrix_Size'], row['BRAM']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=8, color='#bd93f9')
     
     if not df_2d.empty:
         ax1.scatter(df_2d['Matrix_Size'], df_2d['DSP'], marker='D', color='#ff9ff3', s=150, zorder=5, label='2D DSP (16x16 only)')
@@ -253,9 +259,13 @@ def plot_global_resource_scalability():
     ax2.plot(df_1d['Matrix_Size'], df_1d['FF'], marker='p', color='#a29bfe', linewidth=2, label='1D FFs')
     
     if not df_2d.empty:
-        ax2.scatter(df_2d['Matrix_Size'], df_2d['LUT'], marker='h', color='#fab1a0', s=150, zorder=5, label='2D LUTs (16x16 only)')
-        ax2.scatter(df_2d['Matrix_Size'], df_2d['FF'], marker='X', color='#e84393', s=150, zorder=5, label='2D FFs (16x16 only)')
-
+        ax2.scatter(df_2d['Matrix_Size'], df_2d['LUT'], marker='h', color='#fab1a0', s=150, zorder=5, label='2D LUTs (Unroll Factor = N)')
+        ax2.scatter(df_2d['Matrix_Size'], df_2d['FF'], marker='X', color='#e84393', s=150, zorder=5, label='2D FFs (Unroll Factor = N)')
+        
+    for _, row in df_1d.iterrows():
+        ax2.annotate(f"{int(row['LUT'])}", (row['Matrix_Size'], row['LUT']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#ff9ff3')
+        ax2.annotate(f"{int(row['FF'])}", (row['Matrix_Size'], row['FF']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=9, color='#54a0ff')
+        
     # Bounded Limit Lines
     ax2.plot([x_min, x_max], [MAX_LUT, MAX_LUT], color='#4ecdc4', linestyle=':', alpha=0.5, label='Max LUTs')
     
@@ -274,7 +284,10 @@ def plot_global_resource_scalability():
 def plot_global_scalability():
     """Plots a fully annotated Log-Log graph comparing algorithmic scalability."""
     df = pd.read_csv(results_csv)
-    df_1d = df[(df['Architecture'] == '1D') & (df['Unroll_Factor'] == '16')]
+    df['Unroll_Factor_Num'] = pd.to_numeric(df['Unroll_Factor'], errors='coerce')
+    
+    df_1d = df[(df['Architecture'] == '1D') & (df['Unroll_Factor_Num'] == df['Matrix_Size'])]
+
     df_2d = df[df['Architecture'] == '2D']
     
     if df_1d.empty:
@@ -285,13 +298,18 @@ def plot_global_scalability():
     fig, ax = plt.subplots(figsize=(12, 8))
     
     ax.plot(df_1d['Matrix_Size'], df_1d['Naive_Avg_us'], marker='x', color='#ffbe0b', linewidth=2, linestyle='--', label='Sequential CPU (O(N³))')
-    ax.plot(df_1d['Matrix_Size'], df_1d['OpenBLAS_Avg_us'], marker='s', color='#ff6b6b', linewidth=3, linestyle=':', label='SIMD CPU (O(N³))')
-    ax.plot(df_1d['Matrix_Size'], df_1d['FPGA_Time_us'], marker='o', color='#4ecdc4', linewidth=3, label='1D FPGA - Unroll 16 (O(N²))')
+    ax.plot(df_1d['Matrix_Size'], df_1d['OpenBLAS_Avg_us'], marker='s', color='#ff6b6b', linewidth=3, linestyle=':', label='OpenBLAS CPU (O(N³))')
+    ax.plot(df_1d['Matrix_Size'], df_1d['FPGA_Time_us'], marker='o', color='#4ecdc4', linewidth=3, label='1D FPGA - Unroll=N (O(N²))')
     
     # Plot 2D as a bright Scatter Point
     if not df_2d.empty:
         ax.scatter(df_2d['Matrix_Size'], df_2d['FPGA_Time_us'], marker='*', color='#ff9ff3', s=300, zorder=5, label='2D Systolic (16x16 only)')
         ax.annotate(f"2D: {df_2d['FPGA_Time_us'].iloc[0]:.2f} us", (16, df_2d['FPGA_Time_us'].iloc[0]), textcoords="offset points", xytext=(15, -15), fontsize=10, color='#ff9ff3', fontweight='bold')
+    
+    for _, row in df_1d.iterrows():
+        ax.annotate(f"{row['Naive_Avg_us']:.2f}", (row['Matrix_Size'], row['Naive_Avg_us']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=8, color='#ffbe0b')
+        ax.annotate(f"{row['OpenBLAS_Avg_us']:.2f}", (row['Matrix_Size'], row['OpenBLAS_Avg_us']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=8, color='#ff6b6b')
+        ax.annotate(f"{row['FPGA_Time_us']:.2f}", (row['Matrix_Size'], row['FPGA_Time_us']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=8, color='#4ecdc4')
 
     ax.set_xscale('log', base=2)
     ax.set_yscale('log', base=10)
@@ -397,3 +415,5 @@ if __name__ == "__main__":
     except Exception:
         pass
     main()
+    # plot_global_scalability()
+    # plot_global_resource_scalability()
