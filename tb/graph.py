@@ -2,9 +2,9 @@ import os
 import re
 import subprocess
 import csv
-import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib.ticker as ticker
+# import matplotlib.pyplot as plt
+# import pandas as pd
+# import matplotlib.ticker as ticker
 
 # Parameters
 matrix_sizes = [16, 32, 64, 128, 256, 512]
@@ -24,6 +24,20 @@ def set_top_function(func_name):
         content = file.read()
     
     # Change syn.top=systolic_mm_1d to the target function
+    pattern = r'(syn\.top=)\w+'
+    new_content = re.sub(pattern, rf'\g<1>{func_name}', content)
+    
+
+# Spartan-7 xc7s100 Limits
+MAX_DSP = 160
+MAX_LUT = 64000
+MAX_FF = 128000
+
+def set_top_function(func_name):
+    """Dynamically switch the Vitis Top Function to build 1D or 2D."""
+    with open(config_file_path, 'r') as file:
+        content = file.read()
+    
     pattern = r'(syn\.top=)\w+'
     new_content = re.sub(pattern, rf'\g<1>{func_name}', content)
     
@@ -90,46 +104,38 @@ def extract_hardware_metrics(work_dir, top_function):
 def plot_per_size_graphs(size, current_unrolls):
     """Generates graphs plotting EVERYTHING from the CSV for a specific Matrix Size."""
     df = pd.read_csv(results_csv)
-    # 1. Use .copy() to safely isolate the filtered data
     df_1d = df[(df['Matrix_Size'] == size) & (df['Architecture'] == '1D')].copy()
     df_2d = df[(df['Matrix_Size'] == size) & (df['Architecture'] == '2D')].copy()
         
     if df_1d.empty:
         return
         
-    # 2. THE FIX: Convert the string numbers back into actual integers
     df_1d['Unroll_Factor'] = pd.to_numeric(df_1d['Unroll_Factor'])
     
-    # Calculate bounds for the horizontal lines
     x_min = df_1d['Unroll_Factor'].min()
     x_max = df_1d['Unroll_Factor'].max()
     
     plt.style.use('dark_background')
     
-    # --- GRAPH 1: LATENCY & CYCLES ---
     fig1, ax1 = plt.subplots(figsize=(12, 7))
     
-    # Primary Y-Axis (Microseconds)
     ax1.plot(df_1d['Unroll_Factor'], df_1d['FPGA_Time_us'], marker='o', color="#4ecdc4", linewidth=2, label='1D FPGA Latency')
     ax1.plot(df_1d['Unroll_Factor'], df_1d['HLS_Sim_Avg_us'], marker='v', color='#bd93f9', linewidth=2, linestyle='-.', label='1D HLS C-Sim (Emulation)')
     ax1.plot(df_1d['Unroll_Factor'], df_1d['Naive_Avg_us'], marker='x', color='#ffbe0b', linewidth=2, linestyle='--', label='Naive C++ Latency')
     ax1.plot(df_1d['Unroll_Factor'], df_1d['OpenBLAS_Avg_us'], marker='s', color='#ff6b6b', linewidth=2, linestyle=':', label='OpenBLAS Latency')
     
-    # Add 2D theoretical data bounded to the data points (No more infinite axhline)
     if not df_2d.empty:
         time_2d = df_2d['FPGA_Time_us'].iloc[0]
         csim_2d = df_2d['HLS_Sim_Avg_us'].iloc[0]
         ax1.plot([x_min, x_max], [time_2d, time_2d], color='#ff9ff3', linestyle='-.', linewidth=2, label=f'2D Systolic FPGA ({time_2d:.1f} us)')
         ax1.plot([x_min, x_max], [csim_2d, csim_2d], color='#fd79a8', linestyle=':', linewidth=2, label=f'2D HLS C-Sim ({csim_2d:.1f} us)')
 
-    # Annotate EVERY point
     for idx, row in df_1d.iterrows():
         ax1.annotate(f"{row['FPGA_Time_us']:.1f}", (row['Unroll_Factor'], row['FPGA_Time_us']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=8, color='#4ecdc4')
         ax1.annotate(f"{row['HLS_Sim_Avg_us']:.1f}", (row['Unroll_Factor'], row['HLS_Sim_Avg_us']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=8, color='#bd93f9')
         ax1.annotate(f"{row['Naive_Avg_us']:.1f}", (row['Unroll_Factor'], row['Naive_Avg_us']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=8, color='#ffbe0b')
         ax1.annotate(f"{row['OpenBLAS_Avg_us']:.1f}", (row['Unroll_Factor'], row['OpenBLAS_Avg_us']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=8, color='#ff6b6b')
 
-    # Secondary Y-Axis (FPGA Cycles) - Mapped perfectly from Time (10ns clock -> Time = Cycles / 100)
     def time_to_cycles(x): return x * 100
     def cycles_to_time(x): return x / 100
     secax = ax1.secondary_yaxis('right', functions=(time_to_cycles, cycles_to_time))
@@ -147,7 +153,6 @@ def plot_per_size_graphs(size, current_unrolls):
     fig1.tight_layout()
     fig1.savefig(f'graph_latency_{size}x{size}.png', dpi=300)
     
-    # --- GRAPH 2: MACRO UTILIZATION ---
     fig2, ax2 = plt.subplots(figsize=(12, 7))
     ax2.plot(df_1d['Unroll_Factor'], df_1d['DSP'], marker='D', color='#ffe66d', linewidth=2, label='1D DSP Slices')
     ax2.plot(df_1d['Unroll_Factor'], df_1d['BRAM'], marker='^', color='#6b5b95', linewidth=2, label='1D BRAM_18K')
@@ -158,10 +163,8 @@ def plot_per_size_graphs(size, current_unrolls):
         ax2.plot([x_min, x_max], [dsp_2d, dsp_2d], color='#ffe66d', linestyle='-.', alpha=0.5, label=f'2D DSP Required ({int(dsp_2d)})')
         ax2.plot([x_min, x_max], [bram_2d, bram_2d], color='#6b5b95', linestyle='-.', alpha=0.5, label=f'2D BRAM Required ({int(bram_2d)})')
 
-    # Bounded Limit Line
     ax2.plot([x_min, x_max], [MAX_DSP, MAX_DSP], color='red', linestyle='--', alpha=0.7, label=f'Spartan-7 Max DSP Limit ({MAX_DSP})')
 
-    # Annotate EVERY point
     for _, row in df_1d.iterrows():
         ax2.annotate(f"{int(row['DSP'])}", (row['Unroll_Factor'], row['DSP']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9, color='#ffe66d')
         ax2.annotate(f"{int(row['BRAM'])}", (row['Unroll_Factor'], row['BRAM']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#6b5b95')
@@ -178,7 +181,6 @@ def plot_per_size_graphs(size, current_unrolls):
     fig2.tight_layout()
     fig2.savefig(f'graph_macro_util_{size}x{size}.png', dpi=300)
 
-    # --- GRAPH 3: LOGIC UTILIZATION ---
     fig3, ax3 = plt.subplots(figsize=(12, 7))
     ax3.plot(df_1d['Unroll_Factor'], df_1d['LUT'], marker='*', color='#ff9ff3', linewidth=2, label='1D LUTs')
     ax3.plot(df_1d['Unroll_Factor'], df_1d['FF'], marker='p', color='#54a0ff', linewidth=2, label='1D FFs')
@@ -189,11 +191,9 @@ def plot_per_size_graphs(size, current_unrolls):
         ax3.plot([x_min, x_max], [lut_2d, lut_2d], color='#ff9ff3', linestyle='-.', alpha=0.5, label=f'2D LUT Required ({int(lut_2d)})')
         ax3.plot([x_min, x_max], [ff_2d, ff_2d], color='#54a0ff', linestyle='-.', alpha=0.5, label=f'2D FF Required ({int(ff_2d)})')
 
-    # Bounded Limit Lines
     ax3.plot([x_min, x_max], [MAX_LUT, MAX_LUT], color='#ff9ff3', linestyle='--', alpha=0.5, label=f'Spartan-7 Max LUT ({MAX_LUT})')
     ax3.plot([x_min, x_max], [MAX_FF, MAX_FF], color='#54a0ff', linestyle='--', alpha=0.5, label=f'Spartan-7 Max FF ({MAX_FF})')
 
-    # Annotate EVERY point
     for _, row in df_1d.iterrows():
         ax3.annotate(f"{int(row['LUT'])}", (row['Unroll_Factor'], row['LUT']), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9, color='#ff9ff3')
         ax3.annotate(f"{int(row['FF'])}", (row['Unroll_Factor'], row['FF']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#54a0ff')
@@ -231,7 +231,6 @@ def plot_global_resource_scalability():
     plt.style.use('dark_background')
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
 
-    # --- SUBPLOT 1: MACRO RESOURCES ---
     ax1.plot(df_1d['Matrix_Size'], df_1d['DSP'], marker='o', color='#ffe66d', linewidth=2, label='1D DSP (Unroll Factor = N)')
     ax1.plot(df_1d['Matrix_Size'], df_1d['BRAM'], marker='^', color='#6b5b95', linewidth=2, linestyle='--', label='1D BRAM (Unroll Factor = N)')
     
@@ -244,7 +243,6 @@ def plot_global_resource_scalability():
         ax1.scatter(df_2d['Matrix_Size'], df_2d['BRAM'], marker='v', color='#54a0ff', s=150, zorder=5, label='2D BRAM (16x16 only)')
         ax1.annotate(f"2D DSP: {int(df_2d['DSP'].iloc[0])}", (16, df_2d['DSP'].iloc[0]), textcoords="offset points", xytext=(15, 0), fontsize=10, color='#ff9ff3')
 
-    # Bounded Limit Line
     ax1.plot([x_min, x_max], [MAX_DSP, MAX_DSP], color='red', linestyle=':', alpha=0.8, label=f'Spartan-7 Limit ({MAX_DSP})')
     
     ax1.set_xscale('log', base=2)
@@ -254,7 +252,6 @@ def plot_global_resource_scalability():
     ax1.grid(True, which="both", ls="--", alpha=0.2)
     ax1.legend()
 
-    # --- SUBPLOT 2: LOGIC RESOURCES ---
     ax2.plot(df_1d['Matrix_Size'], df_1d['LUT'], marker='*', color='#4ecdc4', linewidth=2, label='1D LUTs')
     ax2.plot(df_1d['Matrix_Size'], df_1d['FF'], marker='p', color='#a29bfe', linewidth=2, label='1D FFs')
     
@@ -266,7 +263,6 @@ def plot_global_resource_scalability():
         ax2.annotate(f"{int(row['LUT'])}", (row['Matrix_Size'], row['LUT']), textcoords="offset points", xytext=(0, -15), ha='center', fontsize=9, color='#ff9ff3')
         ax2.annotate(f"{int(row['FF'])}", (row['Matrix_Size'], row['FF']), textcoords="offset points", xytext=(0, 15), ha='center', fontsize=9, color='#54a0ff')
         
-    # Bounded Limit Lines
     ax2.plot([x_min, x_max], [MAX_LUT, MAX_LUT], color='#4ecdc4', linestyle=':', alpha=0.5, label='Max LUTs')
     
     ax2.set_xscale('log', base=2)
@@ -301,7 +297,6 @@ def plot_global_scalability():
     ax.plot(df_1d['Matrix_Size'], df_1d['OpenBLAS_Avg_us'], marker='s', color='#ff6b6b', linewidth=3, linestyle=':', label='OpenBLAS CPU (O(N³))')
     ax.plot(df_1d['Matrix_Size'], df_1d['FPGA_Time_us'], marker='o', color='#4ecdc4', linewidth=3, label='1D FPGA - Unroll=N (O(N²))')
     
-    # Plot 2D as a bright Scatter Point
     if not df_2d.empty:
         ax.scatter(df_2d['Matrix_Size'], df_2d['FPGA_Time_us'], marker='*', color='#ff9ff3', s=300, zorder=5, label='2D Systolic (16x16 only)')
         ax.annotate(f"2D: {df_2d['FPGA_Time_us'].iloc[0]:.2f} us", (16, df_2d['FPGA_Time_us'].iloc[0]), textcoords="offset points", xytext=(15, -15), fontsize=10, color='#ff9ff3', fontweight='bold')
@@ -333,25 +328,20 @@ def main():
     
     for matrix_size in matrix_sizes:
         print(f"\n=======================================================")
-        print(f"COMMENCING MATRIX SIZE SWEEP: {matrix_size}x{matrix_size}")
+        print(f"MATRIX SIZE SWEEP: {matrix_size}x{matrix_size}")
         print(f"=======================================================")
         
         set_matrix_size(matrix_size)
         current_unrolls = [1 << i for i in range(matrix_size.bit_length())]
 
-        # Variables to carry the latest 2D sim values into the Phase 3 writing step
         latest_hw_2d_sim = 0
         latest_naive = 0
         latest_ob = 0
         
-        # --- PHASE 1 & 2: 1D ARCHITECTURE SWEEP ---
         for factor in current_unrolls:
-            print(f"\n---> Building 1D Architecture (Unroll {factor})")
             set_top_function("systolic_mm_1d")
             set_hardware_factors(factor)
             
-            # C-SIMULATION (Now happens per unroll factor!)
-            print("     [*] Running Software Benchmarks (C-Sim)...")
             try:
                 subprocess.run(["vitis-run", "--mode", "hls", "--csim", "--config", "hls_config.cfg", "--work_dir", "./build_csim"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 with open("build_csim/hls/csim/build/sw_avgs_temp.txt", "r") as f:
@@ -364,8 +354,6 @@ def main():
                 print(f"     [!] Failed to run/read benchmarks: {e}")
                 continue
             
-            # HARDWARE SYNTHESIS (1D)
-            print("     [*] Running Hardware Synthesis...")
             try:
                 subprocess.run(["v++", "-c", "--mode", "hls", "--config", "hls_config.cfg", "--work_dir", "./build_1d"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 metrics = extract_hardware_metrics("./build_1d", "systolic_mm_1d")
@@ -380,9 +368,7 @@ def main():
             except subprocess.CalledProcessError:
                 print("     [!] 1D Hardware synthesis failed.")
 
-        # --- PHASE 3: 2D ARCHITECTURE BUILD ---
         if matrix_size == 16:
-            print(f"\n---> Building 2D Architecture (Fully Unrolled {matrix_size}x{matrix_size})")
             set_top_function("systolic_mm_2d")
             
             try:
@@ -398,13 +384,9 @@ def main():
                         writer.writerow([matrix_size, '2D', 'Full', latest_hw_2d_sim, latest_naive, latest_ob, metrics['cycles'], fpga_time_us, metrics['dsp'], metrics['bram'], metrics['lut'], metrics['ff']])
             except subprocess.CalledProcessError:
                 print("     [!] 2D Hardware synthesis failed (Likely OOM due to massive grid size).")
-        else:
-            print(f"\n---> Skipping 2D Architecture for {matrix_size}x{matrix_size} to prevent compiler timeout.")
 
-        print(f"\n[*] Generating Visualizations for {matrix_size}x{matrix_size}...")
         plot_per_size_graphs(matrix_size, current_unrolls)
 
-    print("\n[*] Generating Global Scalability and Resource Plots...")
     plot_global_scalability()
     plot_global_resource_scalability()
 
@@ -415,5 +397,3 @@ if __name__ == "__main__":
     except Exception:
         pass
     main()
-    # plot_global_scalability()
-    # plot_global_resource_scalability()
